@@ -26,6 +26,7 @@
 #pragma once
 
 #include <atomic>
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -96,6 +97,10 @@ class InferContext {
     infer_data_.options_->model_signature_name_ = parser_->ModelSignatureName();
 
     thread_stat_->contexts_stat_.emplace_back();
+  }
+
+  ~InferContext(){
+    std::cout << std::reduce(diffs.begin(), diffs.end()) / diffs.size() << std::endl;
   }
 
   InferContext(InferContext&&) = delete;
@@ -210,6 +215,7 @@ class InferContext {
   uint64_t num_responses_{0};
   std::function<void(uint32_t)> worker_callback_{nullptr};
   bool has_received_final_response_{false};
+  std::vector<uint64_t> diffs{};
 
 #ifndef DOCTEST_CONFIG_DISABLE
   friend NaggyMockInferContext;

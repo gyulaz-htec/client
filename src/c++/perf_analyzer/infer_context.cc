@@ -119,6 +119,7 @@ InferContext::SendRequest(
   if (async_) {
     uint64_t unique_request_id{(thread_id_ << 48) | ((request_id << 16) >> 16)};
     infer_data_.options_->request_id_ = std::to_string(unique_request_id);
+    std::chrono::time_point<std::chrono::system_clock> first{};
     {
       std::lock_guard<std::mutex> lock(thread_stat_->mu_);
       auto it = async_req_map_
@@ -126,6 +127,7 @@ InferContext::SendRequest(
                     .first;
       it->second.request_inputs_ = {request_inputs};
       it->second.start_time_ = std::chrono::system_clock::now();
+      first = it->second.start_time_;
       it->second.sequence_end_ = infer_data_.options_->sequence_end_;
       it->second.delayed_ = delayed;
       it->second.sequence_id_ = sequence_id;
@@ -141,6 +143,7 @@ InferContext::SendRequest(
           async_callback_func_, *(infer_data_.options_),
           infer_data_.valid_inputs_, infer_data_.outputs_);
     }
+    diffs.push_back((std::chrono::system_clock::now() - first).count());
     thread_stat_->idle_timer.Stop();
 
     total_ongoing_requests_++;
