@@ -447,7 +447,7 @@ class InferenceServerClient(InferenceServerClientBase):
                 if value is None:
                     request.settings[key]
                 else:
-                    if key == "log_file" or key == "log_format":
+                    if key == "log_format":
                         request.settings[key].string_param = value
                     elif key == "log_verbose_level":
                         request.settings[key].uint32_param = value
