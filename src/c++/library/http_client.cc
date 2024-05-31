@@ -1903,6 +1903,7 @@ InferenceServerHttpClient::AsyncInfer(
     }
 
     curl_multi_add_handle(multi_handle_, multi_easy_handle);
+    curl_multi_wakeup(multi_handle_);
   }
 
   cv_.notify_all();
@@ -2268,8 +2269,8 @@ InferenceServerHttpClient::AsyncTransfer()
     int numfds;
     if (mc == CURLM_OK) {
       // Wait for activity. If there are no descriptors in the multi_handle_
-      // then curl_multi_wait will return immediately
-      mc = curl_multi_wait(multi_handle_, NULL, 0, INT_MAX, &numfds);
+      // then curl_multi_poll will return immediately
+      mc = curl_multi_poll(multi_handle_, NULL, 0, INT_MAX, &numfds);
       if (mc == CURLM_OK) {
         while ((msg = curl_multi_info_read(multi_handle_, &place_holder))) {
           uintptr_t identifier = reinterpret_cast<uintptr_t>(msg->easy_handle);
@@ -2330,6 +2331,8 @@ InferenceServerHttpClient::AsyncTransfer()
       InferResultHttp::Create(&result, this_request);
       this_request->callback_(result);
     }
+    std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   } while (!exiting_);
 }
 
