@@ -494,6 +494,111 @@ if __name__ == "__main__":
     if FLAGS.streaming:
         triton_client.start_stream(partial(completion_callback, user_data))
 
+    print("Starting warmup")
+    while not last_request:
+        input_filenames = []
+        repeated_image_data = []
+
+        for idx in range(FLAGS.batch_size):
+            input_filenames.append(filenames[image_idx])
+            repeated_image_data.append(image_data[image_idx])
+            image_idx = (image_idx + 1) % len(image_data)
+            if image_idx == (len(image_data) / 10):
+                last_request = True
+
+        if supports_batching:
+            batched_image_data = np.stack(repeated_image_data, axis=0)
+        else:
+            batched_image_data = repeated_image_data[0]
+
+        # Send request
+        try:
+            for inputs, outputs, model_name, model_version in requestGenerator(
+                batched_image_data, input_name, output_name, dtype, FLAGS
+            ):
+                sent_count += 1
+                if FLAGS.streaming:
+                    triton_client.async_stream_infer(
+                        FLAGS.model_name,
+                        inputs,
+                        request_id=str(sent_count),
+                        model_version=FLAGS.model_version,
+                        outputs=outputs,
+                        timeout=600000000,
+                    )
+                elif FLAGS.async_set:
+                    if FLAGS.protocol.lower() == "grpc":
+                        triton_client.async_infer(
+                            FLAGS.model_name,
+                            inputs,
+                            partial(completion_callback, user_data),
+                            request_id=str(sent_count),
+                            model_version=FLAGS.model_version,
+                            outputs=outputs,
+                            timeout=600000000,
+                        )
+                    else:
+                        triton_client.async_infer(
+                            FLAGS.model_name,
+                            inputs,
+                            request_id=str(sent_count),
+                            model_version=FLAGS.model_version,
+                            outputs=outputs,
+                            timeout=600000000,
+                        )
+                else:
+                    triton_client.infer(
+                        FLAGS.model_name,
+                        inputs,
+                        request_id=str(sent_count),
+                        model_version=FLAGS.model_version,
+                        outputs=outputs,
+                        timeout=600000000,
+                    )
+
+        except InferenceServerException as e:
+            print("Warmup failed: " + str(e))
+            if FLAGS.streaming:
+                triton_client.stop_stream()
+            sys.exit(1)
+
+    if FLAGS.streaming:
+        triton_client.stop_stream()
+
+    if FLAGS.protocol.lower() == "grpc":
+        if FLAGS.streaming or FLAGS.async_set:
+            processed_count = 0
+            while processed_count < sent_count:
+                (results, error) = user_data._completed_requests.get()
+                processed_count += 1
+                if error is not None:
+                    print("Warmup failed: " + str(error))
+                    sys.exit(1)
+    else:
+        if FLAGS.async_set:
+            # Collect results from the ongoing async requests
+            # for HTTP Async requests.
+            for async_request in async_requests:
+                async_request.get_result()
+    print("Warmup finished")
+
+
+    requests = []
+    responses = []
+    result_filenames = []
+    request_ids = []
+    image_idx = 0
+    last_request = False
+    user_data = UserData()
+
+    # Holds the handles to the ongoing HTTP async requests.
+    async_requests = []
+
+    sent_count = 0
+
+    if FLAGS.streaming:
+        triton_client.start_stream(partial(completion_callback, user_data))
+
     print("Starting inference")
     ts = time.time()
     while not last_request:
