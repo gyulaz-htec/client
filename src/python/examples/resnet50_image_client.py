@@ -31,6 +31,7 @@ import sys
 from functools import partial
 
 import numpy as np
+import time
 import scipy.io
 import tritonclient.grpc as grpcclient
 import tritonclient.grpc.model_config_pb2 as mc
@@ -458,8 +459,6 @@ if __name__ == "__main__":
     filenames.sort()
 
     prediction_dataset_size = (len(filenames) // FLAGS.batch_size) * FLAGS.batch_size
-    # For debugging purposes
-    # prediction_dataset_size = 20
     if prediction_dataset_size <= 0:
         print("ERROR: No dataset is assigned for evaluation. Please use bigger dataset")
         sys.exit(1)
@@ -496,6 +495,7 @@ if __name__ == "__main__":
         triton_client.start_stream(partial(completion_callback, user_data))
 
     print("Starting inference")
+    ts = time.time()
     while not last_request:
         input_filenames = []
         repeated_image_data = []
@@ -587,6 +587,8 @@ if __name__ == "__main__":
             for async_request in async_requests:
                 responses.append(async_request.get_result())
 
+    te = time.time()
+
     print("Postrocessing")
     prediction_result_list = []
     for response in responses:
@@ -594,7 +596,7 @@ if __name__ == "__main__":
             this_id = response.get_response().id
         else:
             this_id = response.get_response()["id"]
-        print("Request {}, batch size {}".format(this_id, FLAGS.batch_size))
+        # print("Request {}, batch size {}".format(this_id, FLAGS.batch_size))
         batch_results = postprocess(response, output_name, FLAGS.batch_size, supports_batching)
         prediction_result_list.append(batch_results)
 
@@ -605,4 +607,5 @@ if __name__ == "__main__":
     print("Evaluating results")
     evaluate(prediction_result_list, synset_id, FLAGS.batch_size)
 
+    print(f'Exec time: {te-ts}')
     print("PASS")
